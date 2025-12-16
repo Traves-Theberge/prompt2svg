@@ -1,0 +1,1056 @@
+"use client";
+
+import React, { useEffect, useRef } from 'react';
+import { useTheme } from 'next-themes';
+import { useGenerationStore, useModelsStore, usePresetsStore, useUIStore } from '@/lib/store';
+import { validateSVGParameters } from '@/lib/validations';
+import type { ConsoleLog } from '@/lib/types';
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
+import {
+  Ghost,
+  Zap,
+  Heart,
+  Skull,
+  Rocket,
+  Sun,
+  Moon,
+  Anchor,
+  Camera,
+  Wand2,
+  Settings,
+  ChevronDown,
+  ChevronRight,
+  Maximize2,
+  Share2,
+  Download,
+  Copy,
+  Terminal,
+  Cpu,
+  Activity,
+  Layers,
+  Sparkles,
+  RefreshCw,
+  Eye,
+  CheckCircle2,
+  Box,
+  Command,
+  Upload,
+  Search,
+  Filter,
+  Palette,
+  Sliders
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+
+const SvgGenerator = () => {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+  
+  // Zustand store hooks
+  const { selectedTab, setSelectedTab } = useUIStore();
+  const {
+    status,
+    parameters,
+    consoleLogs,
+    currentResult,
+    selectedIcon,
+    setParameters,
+    addLog,
+    clearLogs,
+    setStatus,
+    setCurrentResult,
+    setSelectedIcon,
+  } = useGenerationStore();
+  
+  const {
+    models: availableModels,
+    selectedModel,
+    isLoading: modelsLoading,
+    error: modelsError,
+    selectModel,
+    fetchModels,
+  } = useModelsStore();
+  
+  const {
+    filteredPresets,
+    selectedPreset,
+    searchQuery: presetSearch,
+    selectPreset,
+    setSearchQuery,
+  } = usePresetsStore();
+  
+  // Local UI state (not persisted)
+  const [customSvg, setCustomSvg] = React.useState('');
+  const [prompt, setPrompt] = React.useState('');
+  const [presetCategory, setPresetCategory] = React.useState('All');
+  const [showColorPicker, setShowColorPicker] = React.useState(false);
+  
+  // Derived state
+  const isGenerating = status === 'loading';
+  const { primaryColor, outlineWidth, simplification, smoothing } = parameters;
+  
+  // --- Constants ---
+  const icons = { Ghost, Zap, Heart, Skull, Rocket, Sun, Anchor, Camera } as const;
+  type BuiltInIconName = keyof typeof icons;
+  type SelectedIcon = BuiltInIconName | "Custom";
+  
+  // Helper: Extract SVG code from Lucide icon
+  const getIconSVGCode = (iconName: SelectedIcon): string => {
+    if (iconName === 'Custom') {
+      return customSvg || '<svg><circle cx="12" cy="12" r="10" fill="currentColor"/></svg>';
+    }
+    
+    // Render the icon to get its SVG code
+    const Icon = icons[iconName as BuiltInIconName];
+    if (!Icon) return '<svg><rect width="24" height="24" fill="currentColor"/></svg>';
+    
+    // Create a temporary container to render the icon
+    const temp = document.createElement('div');
+    const ReactDom = require('react-dom');
+    
+    try {
+      // For Lucide icons, we can approximate the SVG
+      // This is a simplified approach - ideally we'd use the icon's SVG directly
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ${iconName} icon --></svg>`;
+    } catch (e) {
+      return '<svg><circle cx="12" cy="12" r="10" fill="currentColor"/></svg>';
+    }
+  };
+  const iconNames = Object.keys(icons) as BuiltInIconName[];
+
+  const models = [
+    { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash-8B', cost: '$0.0001/run' },
+    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', cost: '$0.0002/run' },
+    { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', cost: '$0.0015/run' },
+    { id: 'gemini-ultra', label: 'Gemini Ultra Preview', cost: '$0.0050/run' },
+    { id: 'gemini-nano', label: 'Gemini Nano (Local)', cost: '$0.00/run' },
+  ];
+
+  const presets = [
+    { id: 'None', label: 'None (Standard)', category: 'Minimal', color: 'bg-slate-500' },
+    { id: 'Solid', label: 'Flat Fill', category: 'Minimal', color: 'bg-emerald-400' },
+    { id: 'Line', label: 'Thin Line', category: 'Minimal', color: 'bg-slate-300' },
+    { id: 'Sticker', label: 'Die-Cut Sticker', category: 'Minimal', color: 'bg-white' },
+    { id: 'Glass', label: 'Glassmorphism', category: 'Minimal', color: 'bg-cyan-200' },
+
+    { id: 'Neon', label: 'Cyberpunk Glow', category: 'Tech', color: 'bg-blue-400' },
+    { id: 'Glitch', label: 'Data Glitch', category: 'Tech', color: 'bg-red-500' },
+    { id: 'Pixel', label: '8-Bit Pixel', category: 'Tech', color: 'bg-purple-500' },
+    { id: 'Blueprint', label: 'Technical Draft', category: 'Tech', color: 'bg-blue-600' },
+    { id: 'Wireframe', label: '3D Wireframe', category: 'Tech', color: 'bg-green-400' },
+    { id: 'Circuit', label: 'Circuit Board', category: 'Tech', color: 'bg-yellow-400' },
+    { id: 'Terminal', label: 'ASCII Art', category: 'Tech', color: 'bg-green-600' },
+
+    { id: 'Sketch', label: 'Hand Drawn', category: 'Artistic', color: 'bg-orange-400' },
+    { id: 'Watercolor', label: 'Watercolor', category: 'Artistic', color: 'bg-pink-400' },
+    { id: 'Graffiti', label: 'Spray Paint', category: 'Artistic', color: 'bg-green-400' },
+    { id: 'Chalk', label: 'Chalkboard', category: 'Artistic', color: 'bg-white' },
+    { id: 'Ink', label: 'Ink Bleed', category: 'Artistic', color: 'bg-gray-900' },
+    { id: 'Oil', label: 'Impressionist', category: 'Artistic', color: 'bg-yellow-600' },
+    { id: 'PopArt', label: 'Pop Art', category: 'Artistic', color: 'bg-red-400' },
+
+    { id: 'Origami', label: 'Paper Fold', category: 'Geometric', color: 'bg-yellow-200' },
+    { id: 'LowPoly', label: 'Low Poly', category: 'Geometric', color: 'bg-blue-500' },
+    { id: 'Cubist', label: 'Cubism', category: 'Geometric', color: 'bg-orange-600' },
+    { id: 'Mosaic', label: 'Mosaic Tile', category: 'Geometric', color: 'bg-cyan-600' },
+    { id: 'Hex', label: 'Hexagonal', category: 'Geometric', color: 'bg-purple-400' },
+
+    { id: 'Grunge', label: 'Grunge Texture', category: 'Textured', color: 'bg-stone-500' },
+    { id: 'Noise', label: 'Static Noise', category: 'Textured', color: 'bg-gray-400' },
+    { id: 'Wood', label: 'Woodcut', category: 'Textured', color: 'bg-amber-700' },
+    { id: 'Metal', label: 'Brushed Metal', category: 'Textured', color: 'bg-slate-400' },
+  ];
+
+  const categories = ['All', 'Minimal', 'Tech', 'Artistic', 'Geometric', 'Textured'];
+
+  // Helper to add logs with proper formatting
+  const addConsoleLog = (message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
+    addLog({
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      message,
+      type,
+    });
+  };
+
+  // Fix hydration: mark as mounted
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  // Fetch models on mount
+  useEffect(() => {
+    fetchModels();
+  }, [fetchModels]);
+
+  const modelNameById = React.useMemo(() => {
+    return Object.fromEntries(
+      availableModels.map((m) => [m.id, m.name ?? m.id] as const)
+    ) as Record<string, string>;
+  }, [availableModels]);
+
+  const handleGenerate = async () => {
+    if (!selectedModel) {
+       addConsoleLog("Please select a model first.", "error");
+       return;
+    }
+
+    if (selectedIcon === 'Custom' && !customSvg.trim()) {
+        addConsoleLog("Please paste SVG code for the custom icon.", "error");
+        return;
+    }
+    
+    // Validate parameters before generation
+    const validation = validateSVGParameters(parameters);
+    if (!validation.success) {
+      addConsoleLog(`Invalid parameters: ${validation.error.message}`, "error");
+      return;
+    }
+
+    setStatus('loading');
+    clearLogs();
+    addConsoleLog(`Initializing ${selectedModel}...`);
+    addConsoleLog(`Ingesting vector source: <${selectedIcon} />`);
+    addConsoleLog(`Analyzing geometry (Simp: ${simplification}%, Smooth: ${smoothing}%)...`);
+    addConsoleLog(`Applying style preset: "${selectedPreset || 'None'}" with prompt "${prompt || 'none'}"...`);
+
+    try {
+      // Get the SVG code for the selected icon
+      const iconSVGCode = selectedIcon === "Custom" 
+        ? customSvg 
+        : getIconSVGCode(selectedIcon);
+      
+      // Build a comprehensive prompt for Claude
+      const systemPrompt = `You are an expert SVG designer and modifier. 
+You will receive:
+1. A source SVG icon
+2. User instructions for modifications
+3. Style parameters (color, outline width, simplification, smoothing)
+
+Your task: Modify and enhance the SVG based on all three inputs.
+
+Current Source Icon:
+${iconSVGCode}
+
+User Instructions: "${prompt || 'Enhance and modify this icon'}"
+
+Style Parameters:
+- Primary Color: ${primaryColor}
+- Outline Width: ${outlineWidth}px
+- Simplification Level: ${simplification}% (0=detailed, 100=simplified)
+- Smoothing: ${smoothing}% (0=sharp, 100=very smooth)
+- Style Preset: ${selectedPreset || 'None'}
+
+Requirements:
+1. Maintain the core shape/concept of the source icon
+2. Apply the user's instructions to enhance/modify it
+3. Use the primary color for strokes/fills
+4. Return ONLY valid SVG code, no explanations
+5. Make sure the SVG is wrapped in proper <svg> tags`;
+
+      const response = await fetch('/api/openrouter/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          iconSVGCode,      // Pass actual SVG code
+          sourceIconName: selectedIcon,
+          stylePreset: selectedPreset || 'None',
+          userPrompt: prompt,  // User's instructions
+          systemPrompt,        // Comprehensive instructions for Claude
+          selectedModel,
+          parameters: {
+            primaryColor,
+            outlineWidth,
+            simplification,
+            smoothing,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Generation failed');
+      }
+
+      const data = await response.json();
+      addConsoleLog(`Rendering SVG paths (Stroke: ${outlineWidth}px, Color: ${primaryColor})...`);
+
+      setCurrentResult(data.svg);
+      setStatus('success');
+      addConsoleLog(`Generation complete. ${data.explanation || 'SVG generated successfully'}`, 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Generation failed';
+      addConsoleLog(`Error: ${message}`, 'error');
+      setStatus('error');
+    }
+  };
+
+  // Scroll logs to bottom
+  const logsEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [consoleLogs]);
+  
+  // Initialize presets in store on mount
+  const { setPresets } = usePresetsStore();
+  useEffect(() => {
+    // Transform local presets to store format
+    const storePresets = presets.map(p => ({
+      id: p.id,
+      name: p.label,
+      description: `${p.category} style`,
+      tags: [p.category.toLowerCase()],
+      systemPrompt: `Apply ${p.label} style to the SVG`,
+    }));
+    setPresets(storePresets);
+  }, [setPresets]);
+  
+  // Filter presets locally by category (store handles search)
+  const categoryFilteredPresets = React.useMemo(() => {
+    if (presetCategory === 'All') return filteredPresets;
+    return filteredPresets.filter(p => p.tags.includes(presetCategory.toLowerCase()));
+  }, [filteredPresets, presetCategory]);
+
+  // --- Render Helpers ---
+
+  // Renders either the selected Lucide icon OR the custom SVG
+    const renderSourceIcon = (size: number, className = "") => {
+      if (selectedIcon === 'Custom') {
+          if (!customSvg.trim()) return <Upload size={size} className={className} />;
+          return (
+              <div
+                className={`${className} [&>svg]:w-full [&>svg]:h-full`}
+                style={{ width: size, height: size }}
+                dangerouslySetInnerHTML={{ __html: customSvg }}
+              />
+          );
+      }
+      if (!selectedIcon) return null;
+      const Icon = icons[selectedIcon as BuiltInIconName];
+      return <Icon size={size} className={className} strokeWidth={1} />;
+  };
+
+  // This function simulates the visual output of the "AI" by applying CSS styles
+  const renderIconPreview = (preset: string) => {
+    const baseClass = "w-full h-full transition-all duration-500";
+    
+    // If we have generated SVG code, render it directly
+    if (currentResult && currentResult.includes('<svg')) {
+      const SvgWrapper = () => (
+        <div
+          className={`${baseClass} [&>svg]:w-full [&>svg]:h-full [&>svg]:max-w-full [&>svg]:max-h-full`}
+          dangerouslySetInnerHTML={{ __html: currentResult }}
+        />
+      );
+      
+      switch(preset) {
+        case 'Neon':
+          return (
+            <div className="relative w-full h-full group">
+              <div className="absolute inset-0 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity" style={{ backgroundColor: primaryColor }}></div>
+              <div className="drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+                <SvgWrapper />
+              </div>
+            </div>
+          );
+        default:
+          return <SvgWrapper />;
+      }
+    }
+    
+    // Fallback rendering for icons without generated code
+    const customContent = selectedIcon === "Custom" ? (customSvg.trim() ? customSvg : null) : null;
+    const IconComp = customContent
+      ? null
+      : selectedIcon === "Custom"
+        ? Upload
+        : selectedIcon ? icons[selectedIcon as BuiltInIconName] : null;
+
+    // Helper to render the inner SVG content
+    type InnerContentProps = {
+      className?: string;
+      style?: React.CSSProperties;
+      strokeColor?: string;
+    };
+
+    const InnerContent = ({
+      className = "",
+      style = {},
+      strokeColor = primaryColor,
+    }: InnerContentProps) => {
+      const commonProps = {
+         style: { ...style, color: strokeColor },
+         className: `${baseClass} ${className}`
+      };
+
+      if (customContent) {
+        return (
+          <div
+             {...commonProps}
+             className={`${commonProps.className} [&>svg]:w-full [&>svg]:h-full`}
+             // Apply color to strokes in custom SVG
+             style={{ ...commonProps.style, stroke: strokeColor }}
+             dangerouslySetInnerHTML={{ __html: customContent }}
+          />
+        );
+      }
+      if (!IconComp) return null;
+      return React.createElement(IconComp, { ...commonProps, strokeWidth: outlineWidth });
+    };
+
+    switch(preset) {
+      case 'None':
+         return <InnerContent />;
+      case 'Neon':
+        return (
+          <div className="relative w-32 h-32 group">
+            <div className="absolute inset-0 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity" style={{ backgroundColor: primaryColor }}></div>
+            <InnerContent className="drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
+          </div>
+        );
+      case 'Sketch':
+        return (
+            <InnerContent
+                className="opacity-90 rotate-1"
+                style={{ strokeDasharray: '4 2', strokeLinecap: 'round' }}
+            />
+        );
+      case 'Solid':
+        return (
+            <div style={{ color: primaryColor }} className="w-full h-full">
+                {customContent ? (
+                    <div className="w-full h-full [&>svg]:w-full [&>svg]:h-full [&>svg]:fill-current [&>svg]:stroke-none" dangerouslySetInnerHTML={{ __html: customContent }} />
+                ) : (
+              IconComp ? React.createElement(IconComp, { strokeWidth: 0, fill: "currentColor", className: baseClass }) : null
+                )}
+            </div>
+        );
+      case 'Glitch':
+        return (
+             <div className="relative w-full h-full">
+                <div className="absolute inset-0 translate-x-[2px] opacity-70 mix-blend-screen" style={{ color: '#ff0000' }}>
+                    <InnerContent strokeColor="#ff0000" />
+                </div>
+                <div className="absolute inset-0 -translate-x-[2px] opacity-70 mix-blend-screen" style={{ color: '#0000ff' }}>
+                    <InnerContent strokeColor="#0000ff" />
+                </div>
+                <InnerContent className="relative mix-blend-normal" />
+             </div>
+        );
+      case 'Pixel':
+          return (
+             <div className="relative w-full h-full" style={{ imageRendering: 'pixelated' }}>
+                 {/* Simulated pixel effect via CSS filters */}
+                 <div style={{ filter: 'contrast(150%) brightness(1.1)' }}>
+                    <InnerContent />
+                 </div>
+                 {/* Grid overlay for pixel look */}
+                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9InRyYW5zcGFyZW50Ii8+PHJlY3Qgd2lkdGg9IjEiIGhlaWdodD0iMSIgZmlsbD0icmdiYSgwLDAsMCwwLjEpIi8+PC9zdmc+')] opacity-20 pointer-events-none"></div>
+             </div>
+          );
+      case 'Blueprint':
+          return (
+             <div className="relative w-full h-full p-2 bg-[#1e40af] rounded-lg overflow-hidden">
+                <div className="absolute inset-0 opacity-20 bg-[linear-gradient(rgba(255,255,255,.1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.1)_1px,transparent_1px)] bg-[length:10px_10px]"></div>
+                <InnerContent strokeColor="#ffffff" style={{ strokeDasharray: '1 1' }} />
+             </div>
+          );
+      default: // All other styles fall back to simple coloring for preview purposes in this mockup
+        return <InnerContent />;
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-screen w-full bg-background text-foreground font-sans overflow-hidden selection:bg-primary/15">
+
+      {/* GLOBAL HEADER */}
+      <header className="h-12 border-b border-border bg-card flex items-center justify-between px-4 flex-shrink-0 z-20">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] bg-muted px-2 py-0.5 rounded text-muted-foreground border border-border uppercase tracking-wider">Beta</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="p-1.5 hover:bg-muted rounded-md cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+            title="Toggle theme"
+          >
+            {mounted ? (
+              theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />
+            ) : (
+              <div className="w-[14px] h-[14px]" />
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* MAIN CONTENT AREA */}
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* LEFT SIDEBAR - Configuration */}
+        <div className="w-80 flex-shrink-0 flex flex-col border-r border-border bg-card">
+          <div className="h-12 flex items-center px-4 border-b border-border flex-shrink-0">
+            <span className="text-xs font-medium text-muted-foreground">Configuration</span>
+            <div className="ml-auto p-1.5 hover:bg-muted rounded-md cursor-pointer text-muted-foreground">
+              <RefreshCw size={14} />
+            </div>
+          </div>
+
+          {/* Flexible Scrollable Area for Content */}
+          <div className="flex-1 flex flex-col min-h-0">
+
+             {/* Static Top Section (Input & Model) */}
+             <div className="p-4 space-y-6 flex-shrink-0">
+                {/* Input Selection Card */}
+                <div className="bg-card border border-border rounded-xl p-5 relative overflow-hidden group hover:border-primary/50 transition-colors">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-600/5 blur-3xl rounded-full -mr-10 -mt-10 pointer-events-none"></div>
+
+                  <div className="flex items-start gap-4 mb-4 relative z-10">
+                    <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center text-yellow-400 border border-yellow-500/20 shadow-[0_0_15px_-3px_rgba(234,179,8,0.3)] overflow-hidden">
+                      {renderSourceIcon(20, "text-yellow-400")}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-xs font-medium text-foreground mb-1">Source Icon</div>
+                      <div className="text-[10px] text-muted-foreground">Select or paste custom SVG</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-2 mt-4 relative z-10">
+                    {iconNames.map((iconName) => {
+                      const isSelected = selectedIcon === iconName;
+                      return (
+                        <button
+                          key={iconName}
+                          onClick={() => setSelectedIcon(iconName)}
+                          className={`w-10 h-10 rounded-lg border flex items-center justify-center transition-all ${
+                            isSelected
+                              ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400 shadow-[0_0_10px_-2px_rgba(234,179,8,0.3)]'
+                              : 'border-white/10 bg-white/5 text-slate-500 hover:border-white/20 hover:bg-white/10'
+                          }`}
+                        >
+                          {React.createElement(icons[iconName], { size: 16, strokeWidth: 1 })}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setSelectedIcon('Custom')}
+                      className={`w-10 h-10 rounded-lg border flex items-center justify-center transition-all ${
+                        selectedIcon === 'Custom'
+                          ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400 shadow-[0_0_10px_-2px_rgba(234,179,8,0.3)]'
+                          : 'border-white/10 bg-white/5 text-slate-500 hover:border-white/20 hover:bg-white/10'
+                      }`}
+                    >
+                      <Upload size={16} />
+                    </button>
+                  </div>
+
+                  {/* Paste Area for Custom SVG */}
+                  {selectedIcon === 'Custom' && (
+                      <div className="mt-4 animate-fade-in-up">
+                          <textarea
+                            value={customSvg}
+                            onChange={(e) => setCustomSvg(e.target.value)}
+                            placeholder="Paste your SVG code here..."
+                            className="w-full h-20 bg-background border border-input rounded-lg p-2 text-[10px] font-mono text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none resize-none"
+                          />
+                      </div>
+                  )}
+                </div>
+
+                {/* Model Selector */}
+                <div className="border border-border rounded-lg bg-card p-3">
+                  <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Model</span>
+                      <span className="text-[10px] text-muted-foreground">{models.find(m => m.id === selectedModel)?.cost}</span>
+                  </div>
+                  <div className="relative">
+                      <Combobox
+                        items={availableModels.map((m) => m.id)}
+                        value={selectedModel || ''}
+                        onValueChange={(value) => {
+                          if (value) selectModel(value);
+                        }}
+                      >
+                        <ComboboxInput
+                          placeholder={
+                            modelsLoading
+                              ? "Loading models…"
+                              : modelsError
+                                ? "Model list unavailable"
+                                : "Search OpenRouter models…"
+                          }
+                          disabled={modelsLoading || !!modelsError}
+                          showClear
+                          className="w-full"
+                        />
+                        <ComboboxContent>
+                          <ComboboxEmpty>
+                            {modelsLoading
+                              ? "Loading…"
+                              : modelsError
+                                ? "Failed to load models."
+                                : "No models found."}
+                          </ComboboxEmpty>
+                          <ComboboxList>
+                            {(id) => (
+                              <ComboboxItem key={id} value={id}>
+                                <div className="flex min-w-0 flex-col">
+                                  <span className="truncate text-sm">
+                                    {modelNameById[id] ?? id}
+                                  </span>
+                                  <span className="truncate text-xs text-muted-foreground">
+                                    {id}
+                                  </span>
+                                </div>
+                              </ComboboxItem>
+                            )}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+
+                      {modelsError && (
+                        <div className="mt-2 text-[10px] text-red-500">{modelsError}</div>
+                      )}
+                  </div>
+                </div>
+             </div>
+
+             {/* Dynamic Preset List - Takes remaining space */}
+             <div className="flex-1 flex flex-col min-h-0 border-t border-border bg-card">
+               <div className="p-3 border-b border-border space-y-3 bg-card z-10">
+                   <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    Style Presets
+                   </div>
+
+                  {/* Search */}
+                  <div className="relative">
+                     <input
+                       type="text"
+                       placeholder="Search presets..."
+                       value={presetSearch}
+                       onChange={(e) => setSearchQuery(e.target.value)}
+                       className="w-full bg-background border border-input rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+                     />
+                  </div>
+
+                  {/* Filter Tabs */}
+                  <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1">
+                     {categories.map(cat => (
+                         <button
+                           key={cat}
+                           onClick={() => setPresetCategory(cat)}
+                           className={`px-3 py-1 text-[10px] rounded-md whitespace-nowrap transition-colors ${
+                             presetCategory === cat
+                              ? 'bg-primary/15 text-primary border border-primary/30'
+                              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                           }`}
+                         >
+                           {cat}
+                         </button>
+                     ))}
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                  {categoryFilteredPresets.length > 0 ? (
+                      categoryFilteredPresets.map((preset) => (
+                        <button
+                          key={preset.id}
+                          onClick={() => selectPreset(preset.id)}
+                          className={`w-full p-3 rounded-lg border text-left transition-all group ${
+                            selectedPreset === preset.id
+                              ? 'border-primary/40 bg-primary/10'
+                              : 'border-border bg-background hover:bg-muted/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium text-foreground truncate">{preset.name}</div>
+                              <div className="text-[10px] text-muted-foreground">{preset.tags.join(', ')}</div>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                  ) : (
+                      <div className="p-4 text-center text-[10px] text-muted-foreground">No presets found</div>
+                  )}
+                </div>
+              </div>
+          </div>
+        </div>
+
+        {/* MIDDLE PANE - Canvas & Logs */}
+        <div className="flex-1 flex flex-col bg-background relative">
+
+          {/* Main Visualizer Area */}
+          <div className="flex-1 p-6 flex flex-col relative overflow-hidden">
+
+             {/* Background Grid */}
+             <div className="absolute inset-0 opacity-10 pointer-events-none"
+                style={{
+                  backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)',
+                  backgroundSize: '24px 24px'
+                }}
+              ></div>
+
+             {/* Canvas Content */}
+             <div className="flex-1 z-10 flex flex-col items-center justify-center gap-12">
+
+                {/* Generation Stage */}
+                <div className="flex items-center gap-16">
+                   {/* Input Node */}
+                   <div className="flex flex-col items-center gap-4 group">
+                       <div className="w-24 h-24 rounded-2xl bg-card border border-border flex items-center justify-center text-muted-foreground group-hover:border-ring transition-all overflow-hidden p-4">
+                         {renderSourceIcon(32, "text-slate-400")}
+                      </div>
+                      <span className="text-lg font-mono text-muted-foreground">INPUT.svg</span>
+                   </div>
+
+                   {/* Process Flow Arrow */}
+                   <div className="flex flex-col items-center gap-2">
+                      <div className={`h-[1px] w-24 bg-gradient-to-r from-slate-700 via-slate-500 to-slate-700 relative overflow-hidden ${isGenerating ? 'opacity-100' : 'opacity-30'}`}>
+                         {isGenerating && (
+                           <motion.div
+                             className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400 to-transparent"
+                             animate={{ x: ['-100%', '100%'] }}
+                             transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                           />
+                         )}
+                      </div>
+                      <div className="text-lg font-mono text-slate-600 dark:text-slate-600 text-gray-600">AI PROCESSING</div>
+                   </div>
+
+                   {/* Output Node */}
+                   <div className="flex flex-col items-center gap-4 relative">
+                     <div className={`w-32 h-32 rounded-2xl bg-card border flex items-center justify-center transition-all duration-500 overflow-hidden p-4 ${isGenerating ? 'border-ring' : currentResult ? 'border-ring' : 'border-border border-dashed'}`}>
+                         {currentResult ? (
+                           <div className="w-full h-full flex items-center justify-center">
+                             {renderIconPreview(selectedPreset || 'None')}
+                           </div>
+                         ) : isGenerating ? (
+                           <motion.div
+                             animate={{ rotate: 360 }}
+                             transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                             className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full"
+                           />
+                         ) : (
+                           <Sparkles size={24} className="text-slate-600" />
+                         )}
+                      </div>
+                      <span className="text-lg font-mono text-muted-foreground">OUTPUT.svg</span>
+                   </div>
+                </div>
+
+             </div>
+          </div>
+
+          {/* Bottom Action Bar (Chat Style) */}
+          <div className="p-6 pt-2 z-20">
+            {/* Log Feed */}
+            <div className="mb-4 h-32 overflow-hidden relative">
+               <div className="overflow-y-auto h-full flex flex-col justify-end custom-scrollbar px-2">
+                  <div className="space-y-1.5 pb-2">
+                     {consoleLogs.map((log) => (
+                        <div key={log.id} className="flex items-start gap-2 text-[10px] font-mono">
+                           <span className="text-slate-600 mt-0.5">
+                             {new Date(log.timestamp).toLocaleTimeString([], {
+                               hour12: false,
+                               hour: "2-digit",
+                               minute: "2-digit",
+                               second: "2-digit",
+                             })}
+                           </span>
+                           <span className={`flex-1 ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-slate-400'}`}>
+                             {log.message}
+                           </span>
+                        </div>
+                     ))}
+                     <div ref={logsEndRef} />
+                  </div>
+               </div>
+            </div>
+
+            {/* Input Bar */}
+            <div className="max-w-3xl mx-auto relative group">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+              <div className="relative flex items-center bg-background border border-input rounded-xl overflow-hidden focus-within:border-ring transition-colors">
+                <div className="pl-4 pr-2 text-muted-foreground">
+                  <Terminal size={16} />
+                </div>
+                <div className="flex-1 flex items-center px-2 py-3">
+                   <textarea
+                     value={prompt}
+                     onChange={(e) => setPrompt(e.target.value)}
+                     placeholder="Describe your desired style modifications..."
+                     className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-none min-h-[20px] max-h-32"
+                     rows={1}
+                     onKeyDown={(e) => {
+                       if (e.key === 'Enter' && !e.shiftKey) {
+                         e.preventDefault();
+                         handleGenerate();
+                       }
+                     }}
+                   />
+                </div>
+                <div className="flex items-center pr-2 gap-1">
+                   <button
+                     onClick={handleGenerate}
+                     disabled={isGenerating}
+                     className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:bg-yellow-500/50 text-black font-medium text-sm rounded-lg transition-colors flex items-center gap-2 disabled:cursor-not-allowed"
+                   >
+                     {isGenerating ? (
+                       <>
+                         <motion.div
+                           animate={{ rotate: 360 }}
+                           transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                           className="w-4 h-4 border-2 border-black border-t-transparent rounded-full"
+                         />
+                         Generating...
+                       </>
+                     ) : (
+                       <>
+                         <Wand2 size={16} />
+                         Generate
+                       </>
+                     )}
+                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT SIDEBAR - Inspector */}
+        <div className="w-80 flex-shrink-0 flex flex-col border-l border-border bg-card">
+
+          {/* Header */}
+          <div className="h-12 flex items-center px-4 border-b border-border">
+            <span className="text-xs font-medium text-foreground">Inspector</span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+
+            {/* SVG Code Viewer */}
+            <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col h-64">
+              <div className="p-3 border-b border-border flex justify-between items-center bg-muted">
+                <span className="text-xs font-medium text-foreground">Generated Source</span>
+                <div className="flex items-center gap-2">
+                  <button className="text-muted-foreground hover:text-foreground transition-colors" title="Copy Code">
+                     <Copy size={12} />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 relative bg-background p-3 overflow-auto">
+                <pre className="text-[10px] font-mono leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
+                  {currentResult ? currentResult : (
+                    <span className="text-muted-foreground italic">No generation yet. Click "Generate" to create your first SVG.</span>
+                  )}
+                </pre>
+              </div>
+            </div>
+
+            {/* Customization Sliders */}
+            <div className="border border-border bg-card rounded-lg overflow-hidden">
+
+                 {showColorPicker ? (
+                   <div className="p-4 bg-card animate-in fade-in zoom-in-95 duration-200">
+                     <div className="flex items-center justify-between mb-4">
+                       <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                         <Palette size={12} className="text-muted-foreground" />
+                         Custom Color
+                       </div>
+                       <button
+                         onClick={() => setShowColorPicker(false)}
+                         className="h-7 px-3 rounded-md bg-primary text-primary-foreground text-[10px] font-medium hover:bg-primary/90 transition-colors shadow-sm"
+                       >
+                         Done
+                       </button>
+                     </div>
+                     
+                     <div className="space-y-4">
+                        <div className="w-full h-40 rounded-xl overflow-hidden border border-border shadow-sm relative group">
+                            <input
+                              type="color"
+                              value={primaryColor}
+                              onChange={(e) => setParameters({ primaryColor: e.target.value })}
+                              className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] p-0 m-0 border-0 cursor-pointer"
+                            />
+                            <div className="absolute inset-0 pointer-events-none ring-1 ring-inset ring-black/5 dark:ring-white/10 rounded-xl"></div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <div className="flex-1 relative">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-border shadow-sm" style={{ backgroundColor: primaryColor }}></div>
+                                <input
+                                    value={primaryColor}
+                                    onChange={(e) => setParameters({ primaryColor: e.target.value })}
+                                    className="w-full h-9 rounded-md border border-input bg-background pl-8 pr-3 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none uppercase"
+                                    placeholder="#000000"
+                                />
+                            </div>
+                            <button
+                                onClick={() => setParameters({ primaryColor: '#374d68' })}
+                                className="h-9 px-3 rounded-md border border-border bg-muted/50 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                title="Reset to default"
+                            >
+                                <RefreshCw size={14} />
+                            </button>
+                        </div>
+                     </div>
+                   </div>
+                 ) : (
+                   <>
+                     {/* Primary Color */}
+                     <div className="p-4 border-b border-border">
+                       <div className="flex items-center justify-between mb-3">
+                         <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                           <Palette size={12} className="text-muted-foreground" />
+                           Primary Color
+                         </div>
+                         <span className="text-[10px] font-mono text-muted-foreground uppercase bg-muted px-1.5 py-0.5 rounded">{primaryColor}</span>
+                       </div>
+                       <div className="flex gap-2 items-center flex-wrap">
+                         {['#374d68', '#60A5FA', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'].map(color => (
+                           <button
+                             key={color}
+                             onClick={() => setParameters({ primaryColor: color })}
+                             className={`w-6 h-6 rounded-full transition-all ${primaryColor.toLowerCase() === color.toLowerCase() ? 'ring-2 ring-offset-2 ring-offset-card ring-foreground scale-110' : 'hover:scale-110'}`}
+                             style={{ backgroundColor: color }}
+                           />
+                         ))}
+                         <button
+                           onClick={() => setShowColorPicker(true)}
+                           className="ml-auto h-6 px-2.5 rounded-md border border-border bg-background text-[10px] font-medium text-foreground hover:bg-muted transition-colors"
+                         >
+                           Custom
+                         </button>
+                       </div>
+                     </div>
+
+                 {/* Meaningful SVG Options */}
+                 <div className="p-4 space-y-6">
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-medium text-muted-foreground">Outline Width</span>
+                            <span className="text-[10px] font-mono text-foreground bg-muted px-1.5 py-0.5 rounded">{outlineWidth}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max="5"
+                          step="0.5"
+                          value={outlineWidth}
+                          onChange={(e) => setParameters({ outlineWidth: Number(e.target.value) })}
+                          className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-medium text-muted-foreground">Simplification</span>
+                            <span className="text-[10px] font-mono text-foreground bg-muted px-1.5 py-0.5 rounded">{simplification}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={simplification}
+                          onChange={(e) => setParameters({ simplification: Number(e.target.value) })}
+                          className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-medium text-muted-foreground">Smoothing</span>
+                            <span className="text-[10px] font-mono text-foreground bg-muted px-1.5 py-0.5 rounded">{smoothing}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={smoothing}
+                          onChange={(e) => setParameters({ smoothing: Number(e.target.value) })}
+                          className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+                    </div>
+                 </div>
+                   </>
+                 )}
+              </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      {/* GLOBAL STYLES FOR ANIMATIONS */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #333;
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #555;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        @keyframes slide-right {
+          from { transform: translateX(-100%); opacity: 0; }
+          to { transform: translateX(200%); opacity: 0; }
+        }
+        .animate-slide-right {
+          animation: slide-right 1.5s infinite linear;
+        }
+        @keyframes fade-in-up {
+           from { opacity: 0; transform: translateY(5px); }
+           to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+           animation: fade-in-up 0.3s ease-out forwards;
+        }
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: var(--primary);
+          cursor: pointer;
+          border: 2px solid var(--background);
+        }
+        .slider::-moz-range-thumb {
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: var(--primary);
+          cursor: pointer;
+          border: 2px solid var(--background);
+        }
+      `}</style>
+    </div>
+  );
+};
+
+export default SvgGenerator;
