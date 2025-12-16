@@ -20,7 +20,7 @@ interface CanvasAreaProps {
   
   // Console logs
   consoleLogs: ConsoleLog[];
-  logsEndRef: React.RefObject<HTMLDivElement>;
+  logsEndRef: React.RefObject<HTMLDivElement | null>;
   
   // Prompt input
   prompt: string;
@@ -58,29 +58,47 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
           <div className="flex items-center gap-16">
             {/* Input Node */}
             <div className="flex flex-col items-center gap-4 group">
-              <div className="w-24 h-24 rounded-2xl bg-card border border-border flex items-center justify-center text-muted-foreground group-hover:border-ring transition-all overflow-hidden p-4">
-                {renderSourceIcon(32, "text-slate-400")}
+              <div className="w-48 h-48 rounded-2xl bg-card border border-border flex items-center justify-center text-muted-foreground group-hover:border-ring transition-all overflow-hidden p-6">
+                {renderSourceIcon(96, "text-slate-400")}
               </div>
-              <span className="text-lg font-mono text-muted-foreground">INPUT.svg</span>
+              <span className="text-sm font-mono text-muted-foreground">INPUT.svg</span>
             </div>
 
             {/* Process Flow Arrow */}
-            <div className="flex flex-col items-center gap-2">
-              <div className={`h-[1px] w-24 bg-gradient-to-r from-slate-700 via-slate-500 to-slate-700 relative overflow-hidden ${isGenerating ? 'opacity-100' : 'opacity-30'}`}>
+            <div className="flex flex-col items-center gap-3">
+              <div className={`h-[2px] w-32 relative overflow-hidden ${isGenerating ? 'opacity-100' : 'opacity-30'}`}>
+                <div className="absolute inset-0 bg-gradient-to-r from-slate-700 via-slate-500 to-slate-700" />
                 {isGenerating && (
-                  <motion.div
-                    className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400 to-transparent"
-                    animate={{ x: ['-100%', '100%'] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                  />
+                  <>
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400/80 to-transparent"
+                      animate={{ x: ['-100%', '100%'] }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-orange-400/60 to-transparent"
+                      animate={{ x: ['-100%', '100%'] }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
+                    />
+                  </>
                 )}
               </div>
-              <div className="text-lg font-mono text-slate-600 dark:text-slate-600 text-gray-600">AI PROCESSING</div>
+              <motion.div
+                className="text-sm font-mono"
+                animate={isGenerating ? {
+                  color: ['#475569', '#eab308', '#475569'],
+                } : {}}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <span className={isGenerating ? 'text-yellow-500' : 'text-slate-600'}>
+                  {isGenerating ? 'AI PROCESSING...' : 'AI PROCESSING'}
+                </span>
+              </motion.div>
             </div>
 
             {/* Output Node */}
             <div className="flex flex-col items-center gap-4 relative">
-              <div className={`w-32 h-32 rounded-2xl bg-card border flex items-center justify-center transition-all duration-500 overflow-hidden p-4 ${isGenerating ? 'border-ring' : currentResult ? 'border-ring' : 'border-border border-dashed'}`}>
+              <div className={`w-48 h-48 rounded-2xl bg-card border flex items-center justify-center transition-all duration-500 overflow-hidden p-6 ${isGenerating ? 'border-ring' : currentResult ? 'border-ring' : 'border-border border-dashed'}`}>
                 {currentResult ? (
                   <div className="w-full h-full flex items-center justify-center">
                     {renderIconPreview()}
@@ -89,13 +107,13 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                    className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full"
+                    className="w-10 h-10 border-2 border-yellow-400 border-t-transparent rounded-full"
                   />
                 ) : (
-                  <Sparkles size={24} className="text-slate-600" />
+                  <Sparkles size={48} className="text-slate-600" />
                 )}
               </div>
-              <span className="text-lg font-mono text-muted-foreground">OUTPUT.svg</span>
+              <span className="text-sm font-mono text-muted-foreground">OUTPUT.svg</span>
             </div>
           </div>
         </div>

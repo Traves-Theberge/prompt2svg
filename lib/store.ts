@@ -122,7 +122,12 @@ export interface GenerationState {
     systemPrompt?: string;
     userPrompt?: string;
     rawResponse?: string;
-    steps?: Array<{ name: string; status: 'pending' | 'success' | 'error'; timestamp: number }>;
+    steps?: Array<{
+      name: string;
+      status: 'pending' | 'success' | 'error';
+      timestamp: number;
+      output?: string;
+    }>;
   } | null;
 }
 

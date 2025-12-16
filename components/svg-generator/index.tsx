@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { Upload, Moon, Sun } from 'lucide-react';
+import Handlebars from 'handlebars';
 
 // Store imports
 import { useGenerationStore, useModelsStore, useUIStore } from '@/lib/store';
@@ -115,12 +116,12 @@ const SvgGenerator = () => {
 
     try {
       // Get the SVG code for the selected icon
-      const iconSVGCode = selectedIcon === "Custom" 
-        ? customSvg 
+      const iconSVGCode = selectedIcon === "Custom"
+        ? customSvg
         : (selectedIcon ? getIconSVGCode(selectedIcon as SelectedIcon, customSvg) : '');
-      
-      // Build a comprehensive prompt for Claude
-      const systemPrompt = `You are an expert SVG designer with a deep understanding of the SVG specification.
+
+      // Prompt template using Handlebars-style placeholders
+      const promptTemplate = `You are an expert SVG designer with a deep understanding of the SVG specification.
 Your goal is to produce clean, semantic, and highly portable SVG code.
 
 ### Core Principles:
@@ -147,9 +148,9 @@ Your goal is to produce clean, semantic, and highly portable SVG code.
 Modify the provided source icon based on the user's instructions.
 
 Current Source Icon:
-\${iconSVGCode}
+{{sourceSvg}}
 
-User Instructions: "\${prompt || 'Enhance and modify this icon'}"
+User Instructions: "{{userPrompt}}"
 
 Requirements:
 1. Maintain the core shape/concept of the source icon
@@ -158,13 +159,21 @@ Requirements:
 4. Return ONLY valid SVG code, no explanations
 5. Make sure the SVG is wrapped in proper <svg> tags`;
 
+      // Compile the template with Handlebars
+      const userPromptValue = prompt || 'Enhance and modify this icon';
+      const compiledTemplate = Handlebars.compile(promptTemplate);
+      const systemPrompt = compiledTemplate({
+        sourceSvg: iconSVGCode,
+        userPrompt: userPromptValue,
+      });
+
       // Initialize debug data
       setDebugData({
         systemPrompt,
-        userPrompt: prompt || 'Enhance and modify this icon',
+        userPrompt: userPromptValue,
         steps: [
-          { name: 'Constructing Prompts', status: 'success', timestamp: Date.now() },
-          { name: 'Sending API Request', status: 'pending', timestamp: Date.now() }
+          { name: 'Constructing Prompts', status: 'success', timestamp: Date.now(), output: `Template compiled successfully.\n\nVariables injected:\n- sourceSvg: ${iconSVGCode.length} characters\n- userPrompt: "${userPromptValue}"` },
+          { name: 'Sending API Request', status: 'pending', timestamp: Date.now(), output: 'Waiting for API response...' }
         ]
       });
 
@@ -188,24 +197,30 @@ Requirements:
 
       if (!response.ok) {
         const error = await response.json();
+        const errorOutput = JSON.stringify(error, null, 2);
         setDebugData({
-          rawResponse: JSON.stringify(error, null, 2),
+          systemPrompt,
+          userPrompt: userPromptValue,
+          rawResponse: errorOutput,
           steps: [
-            { name: 'Constructing Prompts', status: 'success', timestamp: Date.now() },
-            { name: 'Sending API Request', status: 'error', timestamp: Date.now() }
+            { name: 'Constructing Prompts', status: 'success', timestamp: Date.now(), output: `Template compiled successfully.\n\nVariables injected:\n- sourceSvg: ${iconSVGCode.length} characters\n- userPrompt: "${userPromptValue}"` },
+            { name: 'Sending API Request', status: 'error', timestamp: Date.now(), output: errorOutput }
           ]
         });
         throw new Error(error.error || 'Generation failed');
       }
 
       const data = await response.json();
-      
+      const rawResponse = JSON.stringify(data, null, 2);
+
       setDebugData({
-        rawResponse: JSON.stringify(data, null, 2),
+        systemPrompt,
+        userPrompt: userPromptValue,
+        rawResponse,
         steps: [
-          { name: 'Constructing Prompts', status: 'success', timestamp: Date.now() },
-          { name: 'Sending API Request', status: 'success', timestamp: Date.now() },
-          { name: 'Rendering SVG', status: 'success', timestamp: Date.now() }
+          { name: 'Constructing Prompts', status: 'success', timestamp: Date.now(), output: `Template compiled successfully.\n\nVariables injected:\n- sourceSvg: ${iconSVGCode.length} characters\n- userPrompt: "${userPromptValue}"` },
+          { name: 'Sending API Request', status: 'success', timestamp: Date.now(), output: rawResponse },
+          { name: 'Rendering SVG', status: 'success', timestamp: Date.now(), output: data.svg || 'No SVG generated' }
         ]
       });
 

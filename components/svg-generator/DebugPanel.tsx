@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Check, AlertCircle, Clock, Code, Terminal } from 'lucide-react';
+import { X, Clock, Code, Terminal } from 'lucide-react';
 import { useGenerationStore, useUIStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 
@@ -18,7 +18,6 @@ export const DebugPanel: React.FC = () => {
   if (!debugData) return null;
 
   const currentStep = debugData.steps?.[selectedStepIndex];
-  const stepName = currentStep?.name;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-[800px] h-[600px] flex flex-col shadow-2xl rounded-xl border border-border bg-card overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
@@ -35,14 +34,7 @@ export const DebugPanel: React.FC = () => {
         </div>
       </div>
 
-      {!debugData ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-          <Terminal size={48} className="mb-4 opacity-20" />
-          <p className="text-sm">Waiting for generation...</p>
-          <p className="text-xs mt-2 opacity-60">Click "Generate" to capture process data.</p>
-        </div>
-      ) : (
-        <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
           {/* Steps Sidebar */}
           <div className="w-64 border-r border-border bg-muted/10 overflow-y-auto p-4 shrink-0">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">Timeline</h3>
@@ -78,81 +70,58 @@ export const DebugPanel: React.FC = () => {
 
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col overflow-hidden bg-background/50">
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              
-              {/* Content for "Constructing Prompts" */}
-              {(stepName === 'Constructing Prompts' || selectedStepIndex === 0) && (
-                <>
-                  {debugData.systemPrompt && (
-                    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <div className="flex items-center gap-2 text-xs font-medium text-blue-400">
-                        <Code size={14} />
-                        SYSTEM PROMPT
-                      </div>
-                      <div className="bg-slate-950 rounded-lg border border-border p-4 overflow-x-auto shadow-inner">
-                        <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap">
-                          {debugData.systemPrompt}
-                        </pre>
-                      </div>
-                    </div>
-                  )}
-
-                  {debugData.userPrompt && (
-                    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300 delay-75">
-                      <div className="flex items-center gap-2 text-xs font-medium text-green-400">
-                        <Code size={14} />
-                        USER PROMPT
-                      </div>
-                      <div className="bg-slate-950 rounded-lg border border-border p-4 overflow-x-auto shadow-inner">
-                        <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap">
-                          {debugData.userPrompt}
-                        </pre>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* Content for "Sending API Request" */}
-              {(stepName === 'Sending API Request' || selectedStepIndex === 1) && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                   <div className="p-4 rounded-lg border border-yellow-500/20 bg-yellow-500/5 text-yellow-500 text-xs flex items-center gap-3">
-                      <Clock className="animate-spin" size={16} />
-                      <span>Waiting for API response...</span>
-                   </div>
-                   
-                   {debugData.userPrompt && (
-                    <div className="space-y-2 opacity-75">
-                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <Code size={14} />
-                        PAYLOAD PREVIEW
-                      </div>
-                      <div className="bg-slate-950 rounded-lg border border-border p-4 overflow-x-auto">
-                        <pre className="text-[10px] font-mono text-slate-500 whitespace-pre-wrap">
-                          {debugData.userPrompt}
-                        </pre>
-                      </div>
-                    </div>
-                  )}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Always show the compiled prompt */}
+              {debugData.systemPrompt && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-medium text-blue-400">
+                    <Code size={14} />
+                    COMPILED PROMPT
+                  </div>
+                  <div className="bg-slate-950 rounded-lg border border-border p-4 overflow-x-auto shadow-inner max-h-[200px] overflow-y-auto">
+                    <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap">
+                      {debugData.systemPrompt}
+                    </pre>
+                  </div>
                 </div>
               )}
 
-              {/* Content for "Rendering SVG" */}
-              {(stepName === 'Rendering SVG' || selectedStepIndex >= 2) && (
-                <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex items-center gap-2 text-xs font-medium text-purple-400">
-                    <Code size={14} />
-                    RAW RESPONSE
+              {currentStep && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* Step Header */}
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${
+                      currentStep.status === 'success' ? 'bg-green-500' :
+                      currentStep.status === 'error' ? 'bg-red-500' :
+                      'bg-yellow-500 animate-pulse'
+                    }`} />
+                    <h3 className="text-sm font-medium">{currentStep.name}</h3>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {new Date(currentStep.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })}
+                    </span>
                   </div>
-                  {debugData.rawResponse ? (
-                    <div className="bg-slate-950 rounded-lg border border-border p-4 overflow-x-auto shadow-inner">
-                      <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap">
-                        {debugData.rawResponse}
-                      </pre>
+
+                  {/* Step Output */}
+                  {currentStep.status === 'pending' ? (
+                    <div className="p-4 rounded-lg border border-yellow-500/20 bg-yellow-500/5 text-yellow-500 text-xs flex items-center gap-3">
+                      <Clock className="animate-spin" size={16} />
+                      <span>{currentStep.output || 'Processing...'}</span>
+                    </div>
+                  ) : currentStep.output ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-medium text-green-400">
+                        <Code size={14} />
+                        STEP OUTPUT
+                      </div>
+                      <div className="bg-slate-950 rounded-lg border border-border p-4 overflow-x-auto shadow-inner max-h-[250px] overflow-y-auto">
+                        <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap">
+                          {currentStep.output}
+                        </pre>
+                      </div>
                     </div>
                   ) : (
                     <div className="p-8 text-center text-muted-foreground text-xs border border-dashed border-border rounded-lg">
-                      No response data available yet.
+                      No output data available for this step.
                     </div>
                   )}
                 </div>
@@ -160,7 +129,6 @@ export const DebugPanel: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
     </div>
   );
 };
